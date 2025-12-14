@@ -24,7 +24,7 @@ void ReaderApp::setup(M5Canvas* _canvas) {
   // 檢查是否有上次紀錄的檔案
   bool success = false;
   if (rConfig.lastFilePath != "" && SD.exists(rConfig.lastFilePath)) {
-    success = _openFile(rConfig.lastFilePath, rConfig.lastOffset);
+    success = _openFile(rConfig.lastFilePath);
   }
 
   // 若無檔案或開啟失敗，則開啟選擇器
@@ -51,7 +51,6 @@ void ReaderApp::_loadConfig() {
   JsonDocument doc;
   if (sys.loadAppConfig(READER_CONFIG_FILE, doc)) {
     rConfig.lastFilePath = doc["path"] | "";
-    rConfig.lastOffset = doc["offset"] | 0;
     rConfig.fontIndex = doc["font"] | 0;
   }
 }
@@ -59,7 +58,6 @@ void ReaderApp::_loadConfig() {
 void ReaderApp::_saveConfig() {
   JsonDocument doc;
   doc["path"] = rConfig.lastFilePath;
-  doc["offset"] = rConfig.lastOffset;
   doc["font"] = rConfig.fontIndex;
   sys.saveAppConfig(READER_CONFIG_FILE, doc);
 }
@@ -67,18 +65,17 @@ void ReaderApp::_saveConfig() {
 // ---------------------------------------------------------
 // 檔案操作
 // ---------------------------------------------------------
-bool ReaderApp::_openFile(String path, size_t offset) {
+bool ReaderApp::_openFile(String path) {
   _closeFile();
 
   currentFile = SD.open(path, FILE_READ);
   if (!currentFile) return false;
 
   rConfig.lastFilePath = path;
-  rConfig.lastOffset = offset;
 
   // 初始化分頁紀錄
   pageOffsets.clear();
-  pageOffsets.push_back(offset);
+  pageOffsets.push_back(0);
 
   isFileLoaded = true;
   return true;
@@ -96,7 +93,7 @@ void ReaderApp::_openFileSelector() {
 
   if (path != "") {
     // 開啟新檔案，從頭開始
-    _openFile(path, 0);
+    _openFile(path);
     _saveConfig();  // 立即存檔
   }
 
@@ -219,7 +216,6 @@ void ReaderApp::_nextPage() {
   if (next == pageOffsets.back()) return;
 
   pageOffsets.push_back(next);
-  rConfig.lastOffset = next;
 
   _drawPage();
   canvas->pushSprite(0, TOP_BAR_HEIGHT);
@@ -229,7 +225,6 @@ void ReaderApp::_prevPage() {
   if (pageOffsets.size() <= 1) return;  // 已經在第一頁
 
   pageOffsets.pop_back();
-  rConfig.lastOffset = pageOffsets.back();
 
   _drawPage();
   canvas->pushSprite(0, TOP_BAR_HEIGHT);
@@ -369,6 +364,4 @@ void ReaderApp::_applyFont() {
   } else if (rConfig.fontIndex == 3) {
     canvas->setFont(&efontKR_24);
   }
-  
-  prevFontIndex = rConfig.fontIndex;
 }

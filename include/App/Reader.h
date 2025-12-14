@@ -8,7 +8,6 @@
 // 定義閱讀器設定結構
 struct ReaderConfig {
     String lastFilePath = "";
-    size_t lastOffset = 0; // 檔案讀取位置
     int fontIndex = 0;
 };
 
@@ -19,7 +18,6 @@ private:
     // 狀態旗標
     bool isSettingsOpen = false;
     bool isFileLoaded = false;
-    int prevFontIndex = 0;
     
     // 檔案處理
     File currentFile;
@@ -43,7 +41,7 @@ private:
     void _loadConfig();
     void _saveConfig();
     
-    bool _openFile(String path, size_t offset);
+    bool _openFile(String path);
     void _closeFile();
     void _openFileSelector(); // 呼叫 SystemManager 的檔案選擇器
 
