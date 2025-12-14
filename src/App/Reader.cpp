@@ -291,7 +291,7 @@ void ReaderApp::_drawSettings() {
   // 說明
   canvas->setTextDatum(bottom_center);
   canvas->setTextColor(COLOR_BLACK);
-  canvas->setTextSize(1);
+  canvas->setTextSize(2);
   canvas->drawString("Touch to change | Wheel Click to Confirm",
                      SCREEN_WIDTH / 2, y + SETTING_WIN_H - 10);
 }
