@@ -1,63 +1,66 @@
 #ifndef READER_H
 #define READER_H
 
-#include <vector>
-
 #include "AppBase.h"
+#include <vector>
 
 // 定義閱讀器設定結構
 struct ReaderConfig {
-  String lastFilePath;  // 上次開啟的檔案
-  size_t lastOffset;    // 上次的閱讀進度 (Byte Offset)
-  int fontSize;         // 字體大小
-  int fontIndex;        // 字型選擇
+    String lastFilePath = "";
+    size_t lastOffset = 0; // 檔案讀取位置
+    int fontIndex = 0;     // 0:Mono, 1:Sans, 2:Serif, 3:Custom
+    int fontSize = 2;      // 1 ~ 4
 };
 
 class ReaderApp : public AppBase {
- private:
-  ReaderConfig rConfig;
+private:
+    ReaderConfig rConfig;
+    
+    // 狀態旗標
+    bool isSettingsOpen = false;
+    bool isFileLoaded = false;
+    
+    // 檔案處理
+    File currentFile;
+    std::vector<size_t> pageOffsets; // 紀錄每一頁的起始 Offset (用於上一頁)
+    
+    // 設定選單狀態
+    // 用於標記「開啟新檔案」按鈕是否被選中 (Highlighed)
+    bool isOpenFileSelected = false; 
 
-  // 狀態控制
-  bool isSettingsOpen = false;
-  int settingCursor =
-      0;  // 目前設定選單指在哪個選項 (0:字體, 1:大小, 2:檔案)
+    // UI 常數
+    const int MARGIN_X = 20;
+    const int MARGIN_Y = 60; // 保留給 Top Bar
+    const int TEXT_AREA_H = 460; // 扣除 Top/Bottom Bar 後的高度
+    
+    // 設定選單 UI 常數
+    const int SETTING_WIN_W = 500;
+    const int SETTING_WIN_H = 340;
+    const int SETTING_ITEM_H = 70;
 
-  // 閱讀狀態
-  File currentFile;
-  std::vector<size_t> pageHistory;  // 記錄每一頁的起始 Offset，用於"上一頁"
-  String pageBuffer;                // 目前頁面的文字內容
-  bool fileOpened = false;
+    // 內部方法
+    void _loadConfig();
+    void _saveConfig();
+    
+    bool _openFile(String path, size_t offset);
+    void _closeFile();
+    void _openFileSelector(); // 呼叫 SystemManager 的檔案選擇器
 
-  // UI 常數
-  const int MARGIN_X = 20;
-  const int MARGIN_Y = 60;      // 留給 Top Bar
-  const int TEXT_AREA_H = 460;  // 960 - 60(Top) - 20(Bottom)
-  const int SETTING_W = 500;
-  const int SETTING_H = 300;
-  const int SETTING_LIST_TOP_MARGIN = 50;
-  const int SETTING_ITEM_H = 40;
+    void _drawPage();     // 核心渲染邏輯
+    void _drawSettings(); // 繪製設定視窗
+    
+    void _nextPage();
+    void _prevPage();
+    
+    void _applyFont();    // 根據設定套用字型
 
-  // 核心功能
-  void _loadReaderConfig();
-  void _saveReaderConfig();
-  bool _openFile(String path, size_t offset);
+public:
+    ReaderApp();
+    virtual ~ReaderApp();
 
-  // 繪圖與邏輯
-  void _drawPage();  // 讀取並繪製目前頁面
-  void _nextPage();
-  void _prevPage();
-  void _setFont();
-  std::vector<String> _getWrappedLines(String text, int maxWidth);
-
-  // 設定選單
-  void _drawSettingsMenu();
-  void _changeSettingValue(int delta);  // 調整設定值
-
- public:
-  ReaderApp();
-  void setup(M5Canvas* _canvas) override;
-  void loop(lgfx::touch_point_t t, bool isPressed) override;
-  void drawUI() override;
+    void setup(M5Canvas* _canvas) override;
+    void loop(lgfx::touch_point_t t, bool isPressed) override;
+    void drawUI() override;
 };
 
 #endif
