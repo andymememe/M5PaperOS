@@ -104,9 +104,7 @@
 
 請在根目錄建立 `config.json` 檔案，填入你的 Wi-Fi 資訊：
 
-JSON
-
-```
+```json
 {
   "wifi_ssid": "你的WiFi名稱",
   "wifi_pass": "你的WiFi密碼",

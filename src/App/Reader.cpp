@@ -4,11 +4,8 @@
 
 ReaderApp::ReaderApp() : AppBase("Reader") {
   // 預設值
-  rConfig.fontSize = 2;
   rConfig.fontIndex = 0;
 }
-
-ReaderApp::~ReaderApp() { _closeFile(); }
 
 // ---------------------------------------------------------
 // 初始化
@@ -45,6 +42,8 @@ void ReaderApp::setup(M5Canvas* _canvas) {
   drawUI();
 }
 
+void ReaderApp::exit() { _closeFile(); }
+
 // ---------------------------------------------------------
 // Config 讀寫
 // ---------------------------------------------------------
@@ -53,7 +52,6 @@ void ReaderApp::_loadConfig() {
   if (sys.loadAppConfig(READER_CONFIG_FILE, doc)) {
     rConfig.lastFilePath = doc["path"] | "";
     rConfig.lastOffset = doc["offset"] | 0;
-    rConfig.fontSize = doc["size"] | 2;
     rConfig.fontIndex = doc["font"] | 0;
   }
 }
@@ -62,7 +60,6 @@ void ReaderApp::_saveConfig() {
   JsonDocument doc;
   doc["path"] = rConfig.lastFilePath;
   doc["offset"] = rConfig.lastOffset;
-  doc["size"] = rConfig.fontSize;
   doc["font"] = rConfig.fontIndex;
   sys.saveAppConfig(READER_CONFIG_FILE, doc);
 }
@@ -94,8 +91,8 @@ void ReaderApp::_closeFile() {
 
 void ReaderApp::_openFileSelector() {
   // 呼叫 SystemManager 的檔案選擇器
-  String path =
-      sys.showFileSelector("/Reader", ".txt");  // 預設只看 TXT，或可改為 "/"
+  String path = sys.showFileSelector(READER_BOOKS_DEFAULT_DIR,
+                                     ".txt");  // 預設只看 TXT，或可改為 "/"
 
   if (path != "") {
     // 開啟新檔案，從頭開始
@@ -259,9 +256,8 @@ void ReaderApp::_drawSettings() {
   canvas->drawString("Reader Settings", SCREEN_WIDTH / 2, y + 20);
 
   // 準備選項文字
-  const char* fontNames[] = {"FreeMono", "FreeSans", "FreeSerif", "Custom"};
+  const char* fontNames[] = {"TW", "JA", "CN", "KR"};
   String fontStr = "Font: " + String(fontNames[rConfig.fontIndex]);
-  String sizeStr = "Size: " + String(rConfig.fontSize);
   String openStr = "Open New File >";
 
   int startY = y + 70;
@@ -284,8 +280,7 @@ void ReaderApp::_drawSettings() {
   };
 
   drawItem(0, fontStr, false);  // Font
-  drawItem(1, sizeStr, false);  // Size
-  drawItem(2, openStr,
+  drawItem(1, openStr,
            isOpenFileSelected);  // Open File (只有這個會有 Highlight 狀態)
 
   // 說明
@@ -318,19 +313,9 @@ void ReaderApp::loop(lgfx::touch_point_t t, bool isPressed) {
             canvas->pushSprite(0, TOP_BAR_HEIGHT);
             lastTouch = millis();
           }
-          // Check Row 1 (Size)
+          // Check Row 1 (Open File)
           else if (t.y > startY + SETTING_ITEM_H &&
                    t.y < startY + SETTING_ITEM_H * 2 - 10) {
-            rConfig.fontSize++;
-            if (rConfig.fontSize > 4) rConfig.fontSize = 1;
-            isOpenFileSelected = false;
-            _drawSettings();
-            canvas->pushSprite(0, TOP_BAR_HEIGHT);
-            lastTouch = millis();
-          }
-          // Check Row 2 (Open File)
-          else if (t.y > startY + SETTING_ITEM_H * 2 &&
-                   t.y < startY + SETTING_ITEM_H * 3 - 10) {
             isOpenFileSelected = true;
             _drawSettings();
             canvas->pushSprite(0, TOP_BAR_HEIGHT);
@@ -374,51 +359,16 @@ void ReaderApp::loop(lgfx::touch_point_t t, bool isPressed) {
 // 工具: 套用字型
 // ---------------------------------------------------------
 void ReaderApp::_applyFont() {
-  // 若為 Custom，先嘗試載入
-  if (rConfig.fontIndex == 3) {
-    if (true) {
-      // 載入失敗，Fallback
-      canvas->setFont(&FreeSans12pt7b);
-    }
-  } else {
-    // 卸載可能存在的 Custom Font，改用內建 GFX Font
-    canvas->unloadFont();
-
-    // 根據 Index 和 Size 選擇
-    // 這裡為了程式碼簡潔，用 switch 暴力對應
-    // Size: 1->9pt, 2->12pt, 3->18pt, 4->24pt
-
-    const GFXfont* f = &FreeMono12pt7b;  // default
-
-    if (rConfig.fontIndex == 0) {  // Mono
-      if (rConfig.fontSize == 1)
-        f = &FreeMono9pt7b;
-      else if (rConfig.fontSize == 2)
-        f = &FreeMono12pt7b;
-      else if (rConfig.fontSize == 3)
-        f = &FreeMono18pt7b;
-      else
-        f = &FreeMono24pt7b;
-    } else if (rConfig.fontIndex == 1) {  // Sans
-      if (rConfig.fontSize == 1)
-        f = &FreeSans9pt7b;
-      else if (rConfig.fontSize == 2)
-        f = &FreeSans12pt7b;
-      else if (rConfig.fontSize == 3)
-        f = &FreeSans18pt7b;
-      else
-        f = &FreeSans24pt7b;
-    } else if (rConfig.fontIndex == 2) {  // Serif
-      if (rConfig.fontSize == 1)
-        f = &FreeSerif9pt7b;
-      else if (rConfig.fontSize == 2)
-        f = &FreeSerif12pt7b;
-      else if (rConfig.fontSize == 3)
-        f = &FreeSerif18pt7b;
-      else
-        f = &FreeSerif24pt7b;
-    }
-
-    canvas->setFont(f);
+  // 根據 Index 選擇
+  if (rConfig.fontIndex == 0) {
+    canvas->setFont(&efontTW_24);
+  } else if (rConfig.fontIndex == 1) {
+    canvas->setFont(&efontJA_24);
+  } else if (rConfig.fontIndex == 2) {
+    canvas->setFont(&efontCN_24);
+  } else if (rConfig.fontIndex == 3) {
+    canvas->setFont(&efontKR_24);
   }
+  
+  prevFontIndex = rConfig.fontIndex;
 }
