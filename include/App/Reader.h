@@ -2,14 +2,14 @@
 #define READER_H
 
 #include "AppBase.h"
+
 #include <vector>
 
 // 定義閱讀器設定結構
 struct ReaderConfig {
     String lastFilePath = "";
     size_t lastOffset = 0; // 檔案讀取位置
-    int fontIndex = 0;     // 0:Mono, 1:Sans, 2:Serif, 3:Custom
-    int fontSize = 2;      // 1 ~ 4
+    int fontIndex = 0;
 };
 
 class ReaderApp : public AppBase {
@@ -19,6 +19,7 @@ private:
     // 狀態旗標
     bool isSettingsOpen = false;
     bool isFileLoaded = false;
+    int prevFontIndex = 0;
     
     // 檔案處理
     File currentFile;
@@ -26,7 +27,7 @@ private:
     
     // 設定選單狀態
     // 用於標記「開啟新檔案」按鈕是否被選中 (Highlighed)
-    bool isOpenFileSelected = false; 
+    bool isOpenFileSelected = false;
 
     // UI 常數
     const int MARGIN_X = 20;
@@ -35,7 +36,7 @@ private:
     
     // 設定選單 UI 常數
     const int SETTING_WIN_W = 500;
-    const int SETTING_WIN_H = 340;
+    const int SETTING_WIN_H = 270;
     const int SETTING_ITEM_H = 70;
 
     // 內部方法
@@ -56,11 +57,11 @@ private:
 
 public:
     ReaderApp();
-    virtual ~ReaderApp();
 
     void setup(M5Canvas* _canvas) override;
     void loop(lgfx::touch_point_t t, bool isPressed) override;
     void drawUI() override;
+    void exit() override;
 };
 
 #endif
