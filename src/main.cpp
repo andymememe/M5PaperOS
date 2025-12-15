@@ -1,5 +1,6 @@
 #include "App/Launcher.h"
 #include "App/Reader.h"
+#include "App/Invoice.h"
 #include "App/Environment.h"
 #include "App/Settings.h"
 #include "App/Test.h"
@@ -7,6 +8,7 @@
 
 LauncherApp appLauncher;
 ReaderApp appReader;
+InvoiceApp appInvoice;
 EnvironmentApp appEnvironment;
 TestApp appTest;
 SettingsApp appSettings;
@@ -16,6 +18,7 @@ void setup() {
   sys.begin();
 
   appLauncher.registerApp(&appReader);
+  appLauncher.registerApp(&appInvoice);
   appLauncher.registerApp(&appEnvironment);
   appLauncher.registerApp(&appTest);
   appLauncher.registerApp(&appSettings);

@@ -4,6 +4,8 @@
 
 ReaderApp::ReaderApp() : AppBase("Reader") {
   // 預設值
+  rConfig.lastFilePath = "";
+  rConfig.lastReadLine = 0;
   rConfig.fontIndex = 0;
 }
 
@@ -17,14 +19,20 @@ void ReaderApp::setup(M5Canvas* _canvas) {
   isSettingsOpen = false;
   isOpenFileSelected = false;
   isFileLoaded = false;
-  pageOffsets.clear();
+  numShowLine = 0;
 
   _loadConfig();
 
   // 檢查是否有上次紀錄的檔案
   bool success = false;
   if (rConfig.lastFilePath != "" && SD.exists(rConfig.lastFilePath)) {
-    success = _openFile(rConfig.lastFilePath);
+    OpenFileErr err = _openFile(rConfig.lastFilePath);
+    if (err == NoErr) {
+      success = true;
+    } else {
+      rConfig.lastFilePath = "";
+      _saveConfig();
+    }
   }
 
   // 若無檔案或開啟失敗，則開啟選擇器
@@ -39,10 +47,14 @@ void ReaderApp::setup(M5Canvas* _canvas) {
     }
   }
 
+  _prepareRenderLine();
   drawUI();
 }
 
-void ReaderApp::exit() { _closeFile(); }
+void ReaderApp::exit() {
+  _saveConfig();
+  _closeFile();
+}
 
 // ---------------------------------------------------------
 // Config 讀寫
@@ -51,6 +63,7 @@ void ReaderApp::_loadConfig() {
   JsonDocument doc;
   if (sys.loadAppConfig(READER_CONFIG_FILE, doc)) {
     rConfig.lastFilePath = doc["path"] | "";
+    rConfig.lastReadLine = doc["line"] | 0;
     rConfig.fontIndex = doc["font"] | 0;
   }
 }
@@ -58,6 +71,7 @@ void ReaderApp::_loadConfig() {
 void ReaderApp::_saveConfig() {
   JsonDocument doc;
   doc["path"] = rConfig.lastFilePath;
+  doc["line"] = rConfig.lastReadLine;
   doc["font"] = rConfig.fontIndex;
   sys.saveAppConfig(READER_CONFIG_FILE, doc);
 }
@@ -65,20 +79,17 @@ void ReaderApp::_saveConfig() {
 // ---------------------------------------------------------
 // 檔案操作
 // ---------------------------------------------------------
-bool ReaderApp::_openFile(String path) {
+OpenFileErr ReaderApp::_openFile(String path) {
   _closeFile();
 
   currentFile = SD.open(path, FILE_READ);
-  if (!currentFile) return false;
+  if (!currentFile) return FileOpenErr;
+  if (currentFile.size() >= 1024 * 1024 * 10) return FileSizeExceedErr;
 
   rConfig.lastFilePath = path;
-
-  // 初始化分頁紀錄
-  pageOffsets.clear();
-  pageOffsets.push_back(0);
-
   isFileLoaded = true;
-  return true;
+
+  return NoErr;
 }
 
 void ReaderApp::_closeFile() {
@@ -93,7 +104,14 @@ void ReaderApp::_openFileSelector() {
 
   if (path != "") {
     // 開啟新檔案，從頭開始
-    _openFile(path);
+    OpenFileErr err = _openFile(path);
+    if (err == FileOpenErr) {
+      sys.showNotification("File Open Error", NOTIFICATION_DEFAULT_DURATION_MS);
+    } else if (err == FileSizeExceedErr) {
+      char buf[64];
+      sprintf(buf, "File size exceed limit (%d Bytes)", MAX_FILE_SIZE);
+      sys.showNotification(buf, NOTIFICATION_DEFAULT_DURATION_MS);
+    }
     _saveConfig();  // 立即存檔
   }
 
@@ -110,7 +128,95 @@ void ReaderApp::drawUI() {
     _drawSettings();
   } else {
     _drawPage();
+    canvas->pushSprite(0, TOP_BAR_HEIGHT);
   }
+}
+
+void ReaderApp::_prepareRenderLine() {
+  lineBuffer.clear();
+  currentFile.seek(0);
+  if (!isFileLoaded || !currentFile) {
+    return;
+  }
+  sys.showNotification("Rendering", NOTIFICATION_INFINITE_DURATION_MS);
+  _applyFont();
+
+  int maxX = SCREEN_WIDTH - MARGIN_X;
+  String rawLine = "";
+  while (currentFile.available()) {
+    String rawLine = currentFile.readStringUntil('\n');
+    rawLine.replace("\r", "");  // 去除 Windows 換行符號
+
+    // 處理空行 (保留段落間的空行)
+    if (rawLine.length() == 0) {
+      lineBuffer.push_back("");
+      continue;
+    }
+
+    String currentVisualLine = "";
+    int ptr = 0;
+    int len = rawLine.length();
+
+    while (ptr < len) {
+      // 1. 找出下一個 "Word" (包含後面的空白)
+      int spaceIndex = rawLine.indexOf(' ', ptr);
+      String word;
+
+      if (spaceIndex == -1) {
+        // 找不到空白了，剩下就是最後一個字
+        word = rawLine.substring(ptr);
+        ptr = len;  // 結束
+      } else {
+        // 取出單字包含空白
+        word = rawLine.substring(ptr, spaceIndex + 1);
+        ptr = spaceIndex + 1;  // 移動指標
+      }
+
+      // 2. 嘗試將這個 Word 加入目前這行
+      String testLine = currentVisualLine + word;
+
+      if (canvas->textWidth(testLine) <= maxX) {
+        // A. 放得下 -> 加入
+        currentVisualLine = testLine;
+      } else {
+        // B. 放不下 -> 需要換行
+
+        // 如果目前這行已經有東西了，先把目前的存入 buffer
+        if (currentVisualLine.length() > 0) {
+          lineBuffer.push_back(currentVisualLine);
+          currentVisualLine = "";
+        }
+
+        // C. 檢查這個 Word 自己是否大於一行 (極限長度處理)
+        // 例如：超長網址或是沒有空白的亂碼
+        if (canvas->textWidth(word) <= maxX) {
+          // C-1. 單字放得下新的一行 -> 直接設為新行
+          currentVisualLine = word;
+        } else {
+          // C-2. 單字本身就比螢幕寬 -> 強制切字元 (Char by Char)
+          for (int i = 0; i < word.length(); i++) {
+            char c = word[i];
+            if (canvas->textWidth(currentVisualLine + c) > maxX) {
+              // 這行滿了，存入並開新行
+              lineBuffer.push_back(currentVisualLine);
+              currentVisualLine = "";
+            }
+            currentVisualLine += c;
+          }
+        }
+      }
+    }
+
+    // 處理該段落剩下的最後一行
+    if (currentVisualLine.length() > 0) {
+      lineBuffer.push_back(currentVisualLine);
+    }
+  }
+
+  numShowLine =
+      floor(float(SCREEN_HEIGHT - 30) / (float(canvas->fontHeight()) * 1.4));
+
+  sys.showNotification("Rendering done", NOTIFICATION_DEFAULT_DURATION_MS);
 }
 
 void ReaderApp::_drawPage() {
@@ -128,104 +234,37 @@ void ReaderApp::_drawPage() {
   canvas->drawFastHLine(20, 40, SCREEN_WIDTH - 40, COLOR_BLACK);
   // 顯示檔名與進度
   canvas->setFont(nullptr);  // 使用系統預設字型顯示 Header
-  String status =
-      rConfig.lastFilePath + " (" + String((int)(pageOffsets.size())) + ")";
+  String status = rConfig.lastFilePath;
   canvas->setTextSize(2);
   canvas->drawString(status, 20, 10);
   _applyFont();  // 切換回本文設定
 
-  // 1. Seek
-  size_t startPos = pageOffsets.back();
-  currentFile.seek(startPos);
-
   int cursorX = MARGIN_X;
   int cursorY = MARGIN_Y;
   int lineHeight = canvas->fontHeight() * 1.4;
-  int maxX = SCREEN_WIDTH - MARGIN_X;
-  int maxY = SCREEN_HEIGHT - 30;
 
-  String lineBuffer = "";
-  bool pageFull = false;
-
-  while (currentFile.available()) {
-    char c = (char)currentFile.read();
-
-    // Check Page Full (Pre-check)
-    // 如果現在這一行是新的一行，且高度已滿
-    if (cursorY + lineHeight > maxY && lineBuffer == "") {
-      // 退回這個字元 (因為它屬於下一頁的第一個字)
-      currentFile.seek(currentFile.position() - 1);
-      pageFull = true;
-      break;
-    }
-
-    if (c == '\r') continue;  // Ignore CR
-
-    if (c == '\n') {
-      canvas->drawString(lineBuffer, MARGIN_X, cursorY);
-      cursorY += lineHeight;
-      lineBuffer = "";
-      continue;
-    }
-
-    String temp = lineBuffer + c;
-    int w = canvas->textWidth(temp);
-
-    if (w > (maxX - MARGIN_X)) {
-      // 這一行滿了
-      // 檢查是否還有空間畫這一行
-      if (cursorY + lineHeight > maxY) {
-        // 空間不夠畫這行了
-        // 退回 c
-        // 退回 lineBuffer 的內容
-        // currentFile 此時指在 c 之後
-        // 我們要退回: 1 (c) + lineBuffer.length()
-        currentFile.seek(currentFile.position() - 1 - lineBuffer.length());
-        pageFull = true;
-        break;
-      }
-
-      // 空間夠，畫出來
-      canvas->drawString(lineBuffer, MARGIN_X, cursorY);
-      cursorY += lineHeight;
-      lineBuffer = String(c);  // c 變成下一行的開頭
-    } else {
-      lineBuffer = temp;
-    }
+  for (int i = 0; i < numShowLine; i++) {
+    if ((rConfig.lastReadLine + i) >= lineBuffer.size()) break;
+    canvas->drawString(lineBuffer[rConfig.lastReadLine + i], MARGIN_X, cursorY);
+    cursorY += lineHeight;
   }
-
-  // 畫出殘餘的 buffer
-  if (!pageFull && lineBuffer.length() > 0) {
-    canvas->drawString(lineBuffer, MARGIN_X, cursorY);
-  }
-
-  // 此時 currentFile.position() 停在下一頁的起點 (如果 pageFull)
-  // 或者 檔尾 (如果不 full)
 }
 
 void ReaderApp::_nextPage() {
   if (!isFileLoaded) return;
 
-  // 檢查是否已到檔尾
-  if (!currentFile.available()) return;
+  if ((rConfig.lastReadLine + numShowLine) >= lineBuffer.size()) return;
 
-  // currentFile 的位置已經在 _drawPage 結束時停在下一頁開頭了
-  size_t next = currentFile.position();
-
-  // 防止重複或是空翻
-  if (next == pageOffsets.back()) return;
-
-  pageOffsets.push_back(next);
-
+  rConfig.lastReadLine += numShowLine;
   _drawPage();
   canvas->pushSprite(0, TOP_BAR_HEIGHT);
 }
 
 void ReaderApp::_prevPage() {
-  if (pageOffsets.size() <= 1) return;  // 已經在第一頁
+  if (!isFileLoaded) return;
+  if (rConfig.lastReadLine == 0) return;
 
-  pageOffsets.pop_back();
-
+  rConfig.lastReadLine = max(0, rConfig.lastReadLine - numShowLine);
   _drawPage();
   canvas->pushSprite(0, TOP_BAR_HEIGHT);
 }
@@ -329,8 +368,8 @@ void ReaderApp::loop(lgfx::touch_point_t t, bool isPressed) {
         _saveConfig();
       }
       isSettingsOpen = false;
+      _prepareRenderLine();
       drawUI();  // 重繪閱讀頁面 (套用新設定)
-      canvas->pushSprite(0, TOP_BAR_HEIGHT);
     }
 
   } else {

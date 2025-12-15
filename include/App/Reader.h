@@ -4,29 +4,23 @@
 #include "AppBase.h"
 
 #include <vector>
+#include <string>
+
+typedef enum {
+    NoErr,
+    FileOpenErr,
+    FileSizeExceedErr
+} OpenFileErr;
 
 // 定義閱讀器設定結構
 struct ReaderConfig {
     String lastFilePath = "";
+    int lastReadLine = 0;
     int fontIndex = 0;
 };
 
 class ReaderApp : public AppBase {
 private:
-    ReaderConfig rConfig;
-    
-    // 狀態旗標
-    bool isSettingsOpen = false;
-    bool isFileLoaded = false;
-    
-    // 檔案處理
-    File currentFile;
-    std::vector<size_t> pageOffsets; // 紀錄每一頁的起始 Offset (用於上一頁)
-    
-    // 設定選單狀態
-    // 用於標記「開啟新檔案」按鈕是否被選中 (Highlighed)
-    bool isOpenFileSelected = false;
-
     // UI 常數
     const int MARGIN_X = 20;
     const int MARGIN_Y = 60; // 保留給 Top Bar
@@ -37,15 +31,38 @@ private:
     const int SETTING_WIN_H = 270;
     const int SETTING_ITEM_H = 70;
 
+    // 檔案常數
+    const size_t MAX_FILE_SIZE = 1024 * 1024 * 1; // 1 MB
+
+    // 路徑常數
+    const String READER_CONFIG_FILE = "/Reader/reader_config.json";
+    const String READER_BOOKS_DEFAULT_DIR = "/Reader/Books";
+    
+    // 文件狀態
+    bool isSettingsOpen = false;
+    bool isFileLoaded = false;
+    int numShowLine = 0;
+    
+    // 設定選單狀態
+    // 用於標記「開啟新檔案」按鈕是否被選中 (Highlighed)
+    bool isOpenFileSelected = false;
+
+    ReaderConfig rConfig;
+    
+    // 檔案處理
+    File currentFile;
+    std::vector<String> lineBuffer;
+
     // 內部方法
     void _loadConfig();
     void _saveConfig();
     
-    bool _openFile(String path);
+    OpenFileErr _openFile(String path);
     void _closeFile();
     void _openFileSelector(); // 呼叫 SystemManager 的檔案選擇器
 
-    void _drawPage();     // 核心渲染邏輯
+    void _prepareRenderLine();
+    void _drawPage();     // 頁面渲染
     void _drawSettings(); // 繪製設定視窗
     
     void _nextPage();

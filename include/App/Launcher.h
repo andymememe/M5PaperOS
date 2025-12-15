@@ -21,7 +21,7 @@ class LauncherApp : public AppBase {
   const int ITEM_HEIGHT = 80;   // 每個選項的高度
   const int LIST_START_Y = 70;  // 列表起始 Y 座標
   const int MAX_VISIBLE_ITEMS =
-      5;  // 畫面一次最多顯示幾個項目 (440px / 80px = 5.5)
+      4;  // 畫面一次最多顯示幾個項目 (440px / 80px = 5.5)
 
   // 繪製單一選項 (輔助用)
   void _drawItem(int listIndex);

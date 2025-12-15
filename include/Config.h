@@ -39,8 +39,6 @@
 #define CALIBRATION_FILE "/calibration.json"
 #define ENV_LOG_FILE "/Data/env_log.csv"  // 環境數據儲存路徑
 #define ENV_TEMP_LOG_FILE "/Data/env_log.tmp"
-#define READER_CONFIG_FILE "/Reader/reader_config.json"
-#define READER_BOOKS_DEFAULT_DIR "/Reader/Books"
 
 // --- SD 卡腳位設定 ---
 #define SD_SPI_SCK_PIN 14

@@ -16,9 +16,6 @@ public:
     virtual void loop(lgfx::touch_point_t touch, bool isTouchPressed);
     virtual void drawUI();
     virtual void exit();
-
-    // Helper: 快速畫按鈕工具
-    bool checkButton(int x, int y, int w, int h, String label, lgfx::touch_point_t t);
 };
 
 #endif
