@@ -2,14 +2,16 @@
 #include "App/Reader.h"
 #include "App/Invoice.h"
 #include "App/Environment.h"
-#include "App/Settings.h"
+#include "App/Marquee.h"
 #include "App/Test.h"
+#include "App/Settings.h"
 #include "SystemManager.h"
 
 LauncherApp appLauncher;
 ReaderApp appReader;
 InvoiceApp appInvoice;
 EnvironmentApp appEnvironment;
+MarqueeApp appMarquee;
 TestApp appTest;
 SettingsApp appSettings;
 
@@ -20,6 +22,7 @@ void setup() {
   appLauncher.registerApp(&appReader);
   appLauncher.registerApp(&appInvoice);
   appLauncher.registerApp(&appEnvironment);
+  appLauncher.registerApp(&appMarquee);
   appLauncher.registerApp(&appTest);
   appLauncher.registerApp(&appSettings);
 
