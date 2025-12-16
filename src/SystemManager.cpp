@@ -61,9 +61,6 @@ void SystemManager::begin() {
 void SystemManager::run() {
   M5.update();
 
-  // 執行電源檢查
-  _checkPowerManagement();
-
   // 紀錄環境數據
   if (millis() - lastEnvLogTime > LOG_ENV_DATA_INTERVAL_MS) {
     if (updateEnvSensor()) {
@@ -71,6 +68,9 @@ void SystemManager::run() {
       lastEnvLogTime = millis();
     }
   }
+
+  // 執行電源檢查
+  _checkPowerManagement();
 
   // --- 休眠狀態下的行為 ---
   if (isSleeping) {
@@ -404,166 +404,169 @@ void SystemManager::syncTime() {
 
 String SystemManager::showFileSelector(String startPath, String extFilter) {
   // 1. 準備獨立 Canvas (Sprite)
-    // 視窗大小設定
-    int winW = 500;
-    int winH = 400;
-    int winX = (960 - winW) / 2;
-    int winY = (540 - winH) / 2;
+  // 視窗大小設定
+  int winW = 500;
+  int winH = 400;
+  int winX = (960 - winW) / 2;
+  int winY = (540 - winH) / 2;
 
-    M5Canvas overlay(&M5.Display);
-    overlay.createSprite(winW, winH);
-    
-    // 設定字型 (防止被其他 App 影響)
-    overlay.setFont(nullptr);
-    overlay.setTextSize(2);
+  M5Canvas overlay(&M5.Display);
+  overlay.createSprite(winW, winH);
 
-    // 2. 載入檔案列表
-    String currentPath = startPath;
-    if (!currentPath.endsWith("/")) currentPath += "/";
-    std::vector<FileInfo> files = _getFileList(currentPath, extFilter);
+  // 設定字型 (防止被其他 App 影響)
+  overlay.setFont(nullptr);
+  overlay.setTextSize(2);
 
-    int selectedIndex = 0;
-    int scrollOffset = 0;
-    int itemsPerPage = FS_MAX_VISIBLE;
-    int itemHeight = FS_ITEM_HEIGHT;
-    int listStartY = 60;  // 列表起始 Y
-    
-    bool needsUpdate = true;
-    long lastInputTime = millis();
-    while (true) {
-        M5.update();
+  // 2. 載入檔案列表
+  String currentPath = startPath;
+  if (!currentPath.endsWith("/")) currentPath += "/";
+  std::vector<FileInfo> files = _getFileList(currentPath, extFilter);
 
-        if (millis() - lastInputTime > FS_TIMEOUT_MS) {
-            // 超過 30 秒沒操作，自動取消
-            overlay.deleteSprite(); // 釋放記憶體
-            return "";
-        }
-        
-        // --- 輸入處理 ---
-        // 滾輪控制
-        if (M5.BtnA.wasPressed()) { // 上
-            selectedIndex--;
-            needsUpdate = true;
-            lastInputTime = millis();
-        }
-        if (M5.BtnC.wasPressed()) { // 下
-            selectedIndex++;
-            needsUpdate = true;
-            lastInputTime = millis();
-        }
+  int selectedIndex = 0;
+  int scrollOffset = 0;
+  int itemsPerPage = FS_MAX_VISIBLE;
+  int itemHeight = FS_ITEM_HEIGHT;
+  int listStartY = 60;  // 列表起始 Y
 
-        // 邊界檢查與滾動計算
-        if (selectedIndex < 0) selectedIndex = 0;
-        if (selectedIndex >= files.size()) selectedIndex = files.size() - 1;
+  bool needsUpdate = true;
+  long lastInputTime = millis();
+  while (true) {
+    M5.update();
 
-        if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
-        if (selectedIndex >= scrollOffset + itemsPerPage) scrollOffset = selectedIndex - itemsPerPage + 1;
-
-        // 觸控處理
-        auto t = M5.Touch.getDetail();
-        if (t.isPressed()) {
-            // 轉換座標到視窗內部
-            int localX = t.x - winX;
-            int localY = t.y - winY;
-
-            if (localX >= 0 && localX <= winW && localY >= 0 && localY <= winH) {
-                // 檢查是否點擊 Cancel 按鈕 (底部區域)
-                if (localY > winH - 60) {
-                    overlay.deleteSprite(); // 釋放記憶體
-                    return ""; // 取消回傳空字串
-                }
-                
-                // 檢查是否點擊列表項目
-                if (localY > listStartY && localY < listStartY + itemsPerPage * itemHeight) {
-                    int clickedIndex = (localY - listStartY) / itemHeight + scrollOffset;
-                    if (clickedIndex < files.size()) {
-                        selectedIndex = clickedIndex;
-                        needsUpdate = true;
-                    }
-                }
-
-                lastInputTime = millis(); // 更新最後操作時間
-            }
-        }
-
-        // 確認鍵 (BtnB 或 按下撥輪)
-        if (M5.BtnB.wasPressed()) {
-            if (files.empty()) continue; // 列表為空不能選
-
-            FileInfo& target = files[selectedIndex];
-            if (target.isFolder) {
-                // 進入資料夾
-                if (target.name == "..") {
-                    // 回上一層 logic
-                    // 去除最後一個 slash
-                    currentPath = currentPath.substring(0, currentPath.length() - 1);
-                    int lastSlash = currentPath.lastIndexOf('/');
-                    currentPath = currentPath.substring(0, lastSlash + 1);
-                } else {
-                    // 進入資料夾
-                    currentPath += target.name + "/";
-                }
-                files = _getFileList(currentPath, extFilter); // 重新讀取
-                selectedIndex = 0;
-                scrollOffset = 0;
-                needsUpdate = true;
-                lastInputTime = millis();
-            } else {
-                // 選中檔案
-                String result = currentPath + target.name;
-                overlay.deleteSprite();
-                return result;
-            }
-        }
-
-        // --- 繪圖邏輯 ---
-        if (needsUpdate) {
-            needsUpdate = false;
-
-            // 清空畫布並畫邊框
-            overlay.fillSprite(WHITE);
-            overlay.drawRect(0, 0, winW, winH, BLACK);
-            overlay.drawRect(4, 4, winW - 8, winH - 8, BLACK);
-
-            // 畫標題
-            overlay.setTextDatum(top_center);
-            overlay.setTextColor(BLACK);
-            overlay.drawString("Select File: " + currentPath, winW / 2, 20);
-            overlay.drawFastHLine(20, 55, winW - 40, BLACK);
-
-            // 畫列表
-            int count = 0;
-            for (int i = scrollOffset; i < files.size(); i++) {
-                if (count >= itemsPerPage) break;
-                
-                int drawY = listStartY + count * itemHeight;
-                _drawFileSelectorItem(&overlay, i, drawY, (i == selectedIndex), files[i]);
-                count++;
-            }
-            
-            // 若列表為空
-            if (files.empty()) {
-                overlay.setTextDatum(top_center);
-                overlay.drawString("(Empty Folder)", winW / 2, listStartY + 20);
-            }
-
-            // 畫 Cancel 按鈕 (固定在底部)
-            int btnH = 40;
-            int btnY = winH - 50;
-            overlay.drawFastHLine(20, btnY - 10, winW - 40, BLACK); // 分隔線
-            
-            // 這裡可以做一個簡單的按鈕樣式
-            overlay.fillRect(150, btnY, winW - 300, btnH, BLACK); // 按鈕背景
-            overlay.setTextColor(WHITE);
-            overlay.setTextDatum(middle_center);
-            overlay.drawString("CANCEL", winW / 2, btnY + btnH / 2);
-
-            // 推送到螢幕
-            overlay.pushSprite(winX, winY);
-        }
-        
-        delay(10); // 避免 Watchdog 觸發
+    if (millis() - lastInputTime > FS_TIMEOUT_MS) {
+      // 超過 30 秒沒操作，自動取消
+      overlay.deleteSprite();  // 釋放記憶體
+      return "";
     }
+
+    // --- 輸入處理 ---
+    // 滾輪控制
+    if (M5.BtnA.wasPressed()) {  // 上
+      selectedIndex--;
+      needsUpdate = true;
+      lastInputTime = millis();
+    }
+    if (M5.BtnC.wasPressed()) {  // 下
+      selectedIndex++;
+      needsUpdate = true;
+      lastInputTime = millis();
+    }
+
+    // 邊界檢查與滾動計算
+    if (selectedIndex < 0) selectedIndex = 0;
+    if (selectedIndex >= files.size()) selectedIndex = files.size() - 1;
+
+    if (selectedIndex < scrollOffset) scrollOffset = selectedIndex;
+    if (selectedIndex >= scrollOffset + itemsPerPage)
+      scrollOffset = selectedIndex - itemsPerPage + 1;
+
+    // 觸控處理
+    auto t = M5.Touch.getDetail();
+    if (t.isPressed()) {
+      // 轉換座標到視窗內部
+      int localX = t.x - winX;
+      int localY = t.y - winY;
+
+      if (localX >= 0 && localX <= winW && localY >= 0 && localY <= winH) {
+        // 檢查是否點擊 Cancel 按鈕 (底部區域)
+        if (localY > winH - 60) {
+          overlay.deleteSprite();  // 釋放記憶體
+          return "";               // 取消回傳空字串
+        }
+
+        // 檢查是否點擊列表項目
+        if (localY > listStartY &&
+            localY < listStartY + itemsPerPage * itemHeight) {
+          int clickedIndex = (localY - listStartY) / itemHeight + scrollOffset;
+          if (clickedIndex < files.size()) {
+            selectedIndex = clickedIndex;
+            needsUpdate = true;
+          }
+        }
+
+        lastInputTime = millis();  // 更新最後操作時間
+      }
+    }
+
+    // 確認鍵 (BtnB 或 按下撥輪)
+    if (M5.BtnB.wasPressed()) {
+      if (files.empty()) continue;  // 列表為空不能選
+
+      FileInfo& target = files[selectedIndex];
+      if (target.isFolder) {
+        // 進入資料夾
+        if (target.name == "..") {
+          // 回上一層 logic
+          // 去除最後一個 slash
+          currentPath = currentPath.substring(0, currentPath.length() - 1);
+          int lastSlash = currentPath.lastIndexOf('/');
+          currentPath = currentPath.substring(0, lastSlash + 1);
+        } else {
+          // 進入資料夾
+          currentPath += target.name + "/";
+        }
+        files = _getFileList(currentPath, extFilter);  // 重新讀取
+        selectedIndex = 0;
+        scrollOffset = 0;
+        needsUpdate = true;
+        lastInputTime = millis();
+      } else {
+        // 選中檔案
+        String result = currentPath + target.name;
+        overlay.deleteSprite();
+        return result;
+      }
+    }
+
+    // --- 繪圖邏輯 ---
+    if (needsUpdate) {
+      needsUpdate = false;
+
+      // 清空畫布並畫邊框
+      overlay.fillSprite(WHITE);
+      overlay.drawRect(0, 0, winW, winH, BLACK);
+      overlay.drawRect(4, 4, winW - 8, winH - 8, BLACK);
+
+      // 畫標題
+      overlay.setTextDatum(top_center);
+      overlay.setTextColor(BLACK);
+      overlay.drawString("Select File: " + currentPath, winW / 2, 20);
+      overlay.drawFastHLine(20, 55, winW - 40, BLACK);
+
+      // 畫列表
+      int count = 0;
+      for (int i = scrollOffset; i < files.size(); i++) {
+        if (count >= itemsPerPage) break;
+
+        int drawY = listStartY + count * itemHeight;
+        _drawFileSelectorItem(&overlay, i, drawY, (i == selectedIndex),
+                              files[i]);
+        count++;
+      }
+
+      // 若列表為空
+      if (files.empty()) {
+        overlay.setTextDatum(top_center);
+        overlay.drawString("(Empty Folder)", winW / 2, listStartY + 20);
+      }
+
+      // 畫 Cancel 按鈕 (固定在底部)
+      int btnH = 40;
+      int btnY = winH - 50;
+      overlay.drawFastHLine(20, btnY - 10, winW - 40, BLACK);  // 分隔線
+
+      // 這裡可以做一個簡單的按鈕樣式
+      overlay.fillRect(150, btnY, winW - 300, btnH, BLACK);  // 按鈕背景
+      overlay.setTextColor(WHITE);
+      overlay.setTextDatum(middle_center);
+      overlay.drawString("CANCEL", winW / 2, btnY + btnH / 2);
+
+      // 推送到螢幕
+      overlay.pushSprite(winX, winY);
+    }
+
+    delay(10);  // 避免 Watchdog 觸發
+  }
 }
 
 bool SystemManager::loadAppConfig(String path, JsonDocument& doc) {
@@ -773,6 +776,8 @@ void SystemManager::_checkPowerManagement() {
     if (!isWiFiConnected()) {
       setWiFi(false);  // 關閉 WiFi 節省電力
     }
+    // 降低 CPU 頻率以節省醒來瞬間的功耗
+    setCpuFrequencyMhz(80);
     M5.Power.lightSleep(timeout + 1000);
   }
 }
@@ -903,73 +908,76 @@ void SystemManager::_logEnvData() {
 
 std::vector<FileInfo> SystemManager::_getFileList(String path,
                                                   String extFilter) {
- std::vector<FileInfo> list;
-    File root = SD.open(path);
-    if (!root || !root.isDirectory()) return list;
+  std::vector<FileInfo> list;
+  File root = SD.open(path);
+  if (!root || !root.isDirectory()) return list;
 
-    // 如果不是根目錄，加入 ".." (上一層)
-    if (path != "/") {
-        list.push_back({"..", true});
-    }
+  // 如果不是根目錄，加入 ".." (上一層)
+  if (path != "/") {
+    list.push_back({"..", true});
+  }
 
-    File file = root.openNextFile();
-    while (file) {
-        String fileName = String(file.name());
-        
-        // 過濾邏輯：只顯示資料夾 或 符合副檔名的檔案
-        // 忽略隱藏檔 (以 . 開頭)
-        if (!fileName.startsWith(".")) {
-            bool isFolder = file.isDirectory();
-            bool match = isFolder; // 資料夾一定顯示
+  File file = root.openNextFile();
+  while (file) {
+    String fileName = String(file.name());
 
-            if (!isFolder && extFilter.length() > 0) {
-                if (fileName.endsWith(extFilter)) match = true;
-            } else if (!isFolder && extFilter.length() == 0) {
-                match = true; // 沒有過濾器則全部顯示
-            }
+    // 過濾邏輯：只顯示資料夾 或 符合副檔名的檔案
+    // 忽略隱藏檔 (以 . 開頭)
+    if (!fileName.startsWith(".")) {
+      bool isFolder = file.isDirectory();
+      bool match = isFolder;  // 資料夾一定顯示
 
-            if (match) {
-                // 為了美觀，若是資料夾，去掉路徑前綴只留名稱 (視 SD 函式庫行為而定)
-                // 這裡假設 file.name() 回傳的是純檔名，若回傳完整路徑需自行切割
-                if (fileName.lastIndexOf("/") > -1) {
-                    fileName = fileName.substring(fileName.lastIndexOf("/") + 1);
-                }
-                list.push_back({fileName, isFolder});
-            }
+      if (!isFolder && extFilter.length() > 0) {
+        if (fileName.endsWith(extFilter)) match = true;
+      } else if (!isFolder && extFilter.length() == 0) {
+        match = true;  // 沒有過濾器則全部顯示
+      }
+
+      if (match) {
+        // 為了美觀，若是資料夾，去掉路徑前綴只留名稱 (視 SD 函式庫行為而定)
+        // 這裡假設 file.name() 回傳的是純檔名，若回傳完整路徑需自行切割
+        if (fileName.lastIndexOf("/") > -1) {
+          fileName = fileName.substring(fileName.lastIndexOf("/") + 1);
         }
-        file = root.openNextFile();
+        list.push_back({fileName, isFolder});
+      }
     }
-    
-    // 排序：資料夾在最上面，接著依檔名排序
-    std::sort(list.begin(), list.end(), [](const FileInfo& a, const FileInfo& b) {
-        if (a.isFolder != b.isFolder) return a.isFolder > b.isFolder; // True (1) > False (0)
-        return a.name < b.name;
-    });
+    file = root.openNextFile();
+  }
 
-    return list;
+  // 排序：資料夾在最上面，接著依檔名排序
+  std::sort(list.begin(), list.end(), [](const FileInfo& a, const FileInfo& b) {
+    if (a.isFolder != b.isFolder)
+      return a.isFolder > b.isFolder;  // True (1) > False (0)
+    return a.name < b.name;
+  });
+
+  return list;
 }
 
-void SystemManager::_drawFileSelectorItem(M5Canvas* targetCanvas, int index, int yPos, bool isSelected, const FileInfo& info) {
-    int w = targetCanvas->width();
-    int h = 40; // 單行高度
+void SystemManager::_drawFileSelectorItem(M5Canvas* targetCanvas, int index,
+                                          int yPos, bool isSelected,
+                                          const FileInfo& info) {
+  int w = targetCanvas->width();
+  int h = 40;  // 單行高度
 
-    // 背景
-    if (isSelected) {
-        targetCanvas->fillRect(5, yPos, w - 10, h, BLACK);
-        targetCanvas->setTextColor(WHITE);
-    } else {
-        targetCanvas->fillRect(5, yPos, w - 10, h, WHITE);
-        targetCanvas->setTextColor(BLACK);
-    }
+  // 背景
+  if (isSelected) {
+    targetCanvas->fillRect(5, yPos, w - 10, h, BLACK);
+    targetCanvas->setTextColor(WHITE);
+  } else {
+    targetCanvas->fillRect(5, yPos, w - 10, h, WHITE);
+    targetCanvas->setTextColor(BLACK);
+  }
 
-    // icon 與 文字
-    String prefix = info.isFolder ? "[DIR] " : "      ";
-    if (info.name == "..") prefix = "[UP]  ";
-    targetCanvas->setTextDatum(middle_left);
-    targetCanvas->drawString(prefix + info.name, 10, yPos + h / 2);
+  // icon 與 文字
+  String prefix = info.isFolder ? "[DIR] " : "      ";
+  if (info.name == "..") prefix = "[UP]  ";
+  targetCanvas->setTextDatum(middle_left);
+  targetCanvas->drawString(prefix + info.name, 10, yPos + h / 2);
 
-    // 畫分隔線
-    if (!isSelected) {
-        targetCanvas->drawFastHLine(10, yPos + h - 1, w - 20, LIGHTGREY);
-    }
+  // 畫分隔線
+  if (!isSelected) {
+    targetCanvas->drawFastHLine(10, yPos + h - 1, w - 20, LIGHTGREY);
+  }
 }
